@@ -1,0 +1,43 @@
+﻿syntax = "proto3";
+
+option csharp_namespace = "MessageProcessing.Dispatcher.Grpc";
+
+service MessageProcessor {
+    // BiDirectional Streaming
+    //Connect جریان دوطرفه است: Processor خودش را معرفی می‌کند و پیام دریافت می‌کند
+    rpc Connect(stream ProcessorInfo) returns (stream MessageToProcess);
+
+    //SendProcessedMessage برای ارسال نتیجه پردازش به Dispatcher است
+    rpc SendProcessedMessage(ProcessedMessage) returns (Ack);
+}
+
+// پیام معرفی Processor
+message ProcessorInfo {
+    string Id = 1;
+    string EngineType = 2;
+}
+
+// پیام برای پردازشگر
+message MessageToProcess {
+    int32 Id = 1;
+    string Sender = 2;
+    string Content = 3;
+    map<string,string> RegexSettings = 4;
+}
+
+// پیام پردازش شده
+message ProcessedMessage {
+    int32 id = 1;
+    string engine = 2;
+    int32 messageLength = 3;
+    bool isValid = 4;
+
+    // برای نتایج Dynamic Regex
+    map<string, bool> additionalFields = 5;
+}
+
+
+// پیام تایید
+message Ack {
+    bool Success = 1;
+}
