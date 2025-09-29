@@ -1,22 +1,29 @@
 ﻿
 using Grpc.Core;
-using DispatcherProto = MPS.MessageProcessing.Dispatcher;
-using DispatcherGrpcProto = MPS.MessageProcessing.Dispatcher.GrpcServer;
-using ProcessorProto = MPS.MessageProcessing.Processor;
+using MPS.MessageProcessing.Dispatcher;
+using MPS.MessageProcessing.Dispatcher.GrpcServer;
+using MPS.MessageProcessing.Dispatcher.Models;
+using MPS.MessageProcessing.Processor;
 using MPS.MessageProcessingProto.Dispatcher.Grpc;
+using DispatcherGrpcProto = MPS.MessageProcessing.Dispatcher.GrpcServer;
+using DispatcherProto = MPS.MessageProcessing.Dispatcher;
+using ProcessorProto = MPS.MessageProcessing.Processor;
 
 namespace MessageProcessing.Tests
 {
+    /// <summary>
+    /// مجموعه تست‌ها برای بررسی عملکرد Dispatcher و Processor
+    /// </summary>
     public class DispatcherProcessorTests
     {
         [Fact]
         public async Task Processor_Should_ProcessMessages_And_SendResultsToDispatcher()
         {
             // شبیه‌سازی Queue
-            var queue = new DispatcherProto.MessageQueueSimulator();
+            var queue = new MessageQueueSimulator();
 
             // ایجاد Dispatcher Service
-            var dispatcher = new DispatcherGrpcProto.MessageProcessorService(queue);
+            var dispatcher = new MessageProcessorService(queue);
 
             // اجرای gRPC Server در پورت تصادفی
             const int Port = 5002;
@@ -29,20 +36,10 @@ namespace MessageProcessing.Tests
 
             try
             {
-                // تنظیم Dynamic Regex برای تست
-                var regexSettings = new Dictionary<string, string>
-            {
-                { "ContainsNumber", @"\d+" },
-                { "ContainsHello", @"\bhello\b" }
-            };
+                var processor = new ProcessorClient("RegexEngineTest", $"http://localhost:{Port}");
 
-                // ایجاد Processor Client
-                var processor = new ProcessorProto.ProcessorClient("RegexEngineTest", $"http://localhost:{Port}", regexSettings);
-
-                // اجرای Processor به صورت غیرهمزمان
                 var processorTask = processor.RunAsync();
 
-                // اجازه بده چند پیام پردازش شوند
                 await Task.Delay(2000);
 
                 // بررسی پیام‌های پردازش شده
