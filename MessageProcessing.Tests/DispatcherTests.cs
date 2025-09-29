@@ -1,5 +1,5 @@
-﻿using MessageProcessing.Dispatcher.Grpc;
-using MPS.MessageProcessing.Dispatcher;
+﻿using ProcessorProto = MPS.MessageProcessingProto.Dispatcher.Grpc;
+using DispacherProto = MPS.MessageProcessing.Dispatcher;
 using MPS.MessageProcessing.Dispatcher.GrpcServer;
 
 namespace MessageProcessing.Tests
@@ -9,10 +9,10 @@ namespace MessageProcessing.Tests
         [Fact]
         public async Task SendProcessedMessage_ShouldStoreMessage()
         {
-            var queue = new MessageQueueSimulator();
+            var queue = new DispacherProto.MessageQueueSimulator();
             var dispatcher = new MessageProcessorService(queue);
 
-            var processedMessage = new ProcessedMessage
+            var processedMessage = new ProcessorProto.ProtoProcessedMessage
             {
                 Id = 1,
                 Engine = "RegexEngine",

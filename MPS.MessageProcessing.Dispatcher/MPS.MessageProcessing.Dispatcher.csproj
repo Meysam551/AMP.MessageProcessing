@@ -16,7 +16,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MPS.MessageProcessing.Core\MPS.MessageProcessing.Core.csproj" />
-    <ProjectReference Include="..\MPS.Shared\MPS.Shared.csproj" />
-	  <Protobuf Include="Protos\message_processor.proto" GrpcServices="Server" />
+	<Protobuf Include="Protos\message_processor.proto" GrpcServices="Server" />
   </ItemGroup>
 </Project>

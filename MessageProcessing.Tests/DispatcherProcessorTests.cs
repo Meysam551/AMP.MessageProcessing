@@ -1,8 +1,9 @@
 ﻿
 using Grpc.Core;
-using DispacherGrc = MessageProcessing.Dispatcher.Grpc;
-using MPS.MessageProcessing.Dispatcher;
-using MPS.MessageProcessing.Dispatcher.GrpcServer;
+using DispatcherProto = MPS.MessageProcessing.Dispatcher;
+using DispatcherGrpcProto = MPS.MessageProcessing.Dispatcher.GrpcServer;
+using ProcessorProto = MPS.MessageProcessing.Processor;
+using MPS.MessageProcessingProto.Dispatcher.Grpc;
 
 namespace MessageProcessing.Tests
 {
@@ -12,16 +13,16 @@ namespace MessageProcessing.Tests
         public async Task Processor_Should_ProcessMessages_And_SendResultsToDispatcher()
         {
             // شبیه‌سازی Queue
-            var queue = new MessageQueueSimulator();
+            var queue = new DispatcherProto.MessageQueueSimulator();
 
             // ایجاد Dispatcher Service
-            var dispatcher = new MessageProcessorService(queue);
+            var dispatcher = new DispatcherGrpcProto.MessageProcessorService(queue);
 
             // اجرای gRPC Server در پورت تصادفی
             const int Port = 5002;
             var server = new Server
             {
-                Services = { DispacherGrc.MessageProcessor.BindService(dispatcher) },
+                Services = { MessageProcessor.BindService(dispatcher) },
                 Ports = { new ServerPort("localhost", Port, ServerCredentials.Insecure) }
             };
             server.Start();
@@ -36,7 +37,7 @@ namespace MessageProcessing.Tests
             };
 
                 // ایجاد Processor Client
-                var processor = new ProcessorClient("RegexEngineTest", $"http://localhost:{Port}", regexSettings);
+                var processor = new ProcessorProto.ProcessorClient("RegexEngineTest", $"http://localhost:{Port}", regexSettings);
 
                 // اجرای Processor به صورت غیرهمزمان
                 var processorTask = processor.RunAsync();
@@ -51,9 +52,6 @@ namespace MessageProcessing.Tests
                 {
                     Assert.True(m.MessageLength > 0);
                     Assert.Equal("RegexEngineTest", m.Engine);
-                    // بررسی Dynamic Regex
-                    Assert.Contains("ContainsNumber", m.AdditionalFields.Keys);
-                    Assert.Contains("ContainsHello", m.AdditionalFields.Keys);
                 });
 
                 // متوقف کردن Processor

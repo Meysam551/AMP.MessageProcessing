@@ -17,7 +17,7 @@ public class HealthCheckSender
     {
         _httpClient = httpClient;
         _managementUrl = managementUrl;
-        _id = Guid.NewGuid().ToString(); // می‌تونیم MAC Address هم اضافه کنیم بعداً
+        _id = Guid.NewGuid().ToString();
     }
 
     public async Task<HealthCheckResponse?> SendHealthCheckAsync(int connectedClients)
@@ -41,7 +41,7 @@ public class HealthCheckSender
             {
                 // Ignore, retry
             }
-            await Task.Delay(10000); // 10 ثانیه بین retry
+            await Task.Delay(10000);
         }
 
         // اگر موفق نشد، غیرفعال کردن سرویس

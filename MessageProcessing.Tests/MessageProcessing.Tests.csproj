@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MPS.MessageProcessing.Dispatcher\MPS.MessageProcessing.Dispatcher.csproj" />
+    <ProjectReference Include="..\MPS.MessageProcessing.Processor\MPS.MessageProcessing.Processor.csproj" />
   </ItemGroup>
 
   <ItemGroup>

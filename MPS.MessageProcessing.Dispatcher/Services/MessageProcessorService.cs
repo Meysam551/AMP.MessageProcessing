@@ -1,35 +1,43 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json;
 using Grpc.Core;
-using MessageProcessing.Dispatcher.Grpc;
-using MessageProcessing.Dispatcher.Services;
+using MPS.MessageProcessingProto.Dispatcher.Grpc;
 using MPS.MessageProcessing.Dispatcher.Models;
-using MPS.Shared;
-
 
 namespace MPS.MessageProcessing.Dispatcher.GrpcServer;
 
+/// <summary>
+/// سرویس gRPC برای مدیریت ارتباط با پردازشگرها (Processors).
+/// این کلاس مسئول استقرار پردازشگرها، ارسال پیام‌ها از صف شبیه‌ساز و دریافت نتایج پردازش است.
+/// </summary>
 public class MessageProcessorService : MessageProcessor.MessageProcessorBase
 {
     private readonly MessageQueueSimulator _queue;
-    //private readonly ConcurrentDictionary<string, IServerStreamWriter<MessageToProcess>> _connectedProcessors = new();
     private readonly ConcurrentDictionary<string, ProcessorState> _connectedProcessors = new();
 
-    // حافظه برای ذخیره نتایج پردازش
-    private readonly ConcurrentBag<ProcessedMessage> _processedResults = new();
-
-
+    /// <summary>
+    /// ایجاد سرویس MessageProcessorService
+    /// </summary>
+    /// <param name="queue">صف پیام شبیه‌سازی‌شده که قرار است پیام‌ها از آن خوانده شوند.</param>
     public MessageProcessorService(MessageQueueSimulator queue)
     {
         _queue = queue;
     }
 
-    public override async Task Connect(IAsyncStreamReader<ProcessorInfo> requestStream,
-                                       IServerStreamWriter<MessageToProcess> responseStream,
-                                       ServerCallContext context)
+    /// <summary>
+    /// متد اصلی برای اتصال پردازشگرها به Dispatcher.
+    /// - اضافه کردن پردازشگر به لیست پردازشگرهای متصل
+    /// - ارسال تنظیمات اولیه (Regex config)
+    /// - ارسال پیام‌ها به پردازشگر به صورت Stream
+    /// </summary>
+    public override async Task Connect(
+        IAsyncStreamReader<ProcessorInfo> requestStream,
+        IServerStreamWriter<ProtoMessageToProcess> responseStream,
+        ServerCallContext context)
     {
         await foreach (var processor in requestStream.ReadAllAsync())
         {
+            // ذخیره وضعیت پردازشگر متصل
             _connectedProcessors.TryAdd(processor.Id, new ProcessorState
             {
                 Stream = responseStream,
@@ -37,92 +45,76 @@ public class MessageProcessorService : MessageProcessor.MessageProcessorBase
                 LastRequestTime = DateTime.UtcNow
             });
 
-            // ارسال تنظیمات Regex به Processor
+            Console.WriteLine($"✅ Processor متصل شد: {processor.Id} ({processor.EngineType})");
+
+            // ارسال تنظیمات Regex به پردازشگر
             var config = new ProcessorConfig
             {
                 RegexSettings = new Dictionary<string, string>
-            {
-                { "ContainsNumber", @"\d+" },
-                { "ContainsHello", @"\bhello\b" }
-            }
+                {
+                    { "ContainsNumber", @"\d+" },
+                    { "ContainsHello", @"\bhello\b" }
+                }
             };
 
-            // اینجا باید روشی داشته باشیم که config را به Processor ارسال کند
-            await responseStream.WriteAsync(new MessageToProcess
+            await responseStream.WriteAsync(new ProtoMessageToProcess
             {
                 Id = 0,
                 Content = JsonSerializer.Serialize(config),
                 Sender = "DispatcherConfig"
             });
 
-            // ادامه ارسال پیام‌ها
+            // ارسال پیام‌های صف به این Processor
             _ = Task.Run(async () =>
             {
                 while (!context.CancellationToken.IsCancellationRequested)
                 {
                     var message = await _queue.GetNextMessageAsync();
-                    var msgToSend = new MessageToProcess
+
+                    var msgToSend = new ProtoMessageToProcess
                     {
                         Id = message.Id,
                         Sender = message.Sender,
                         Content = message.Content
                     };
+
                     await responseStream.WriteAsync(msgToSend);
-                    await Task.Delay(200);
+                    await Task.Delay(200); // جلوگیری از overload
                 }
             });
         }
     }
 
-
-    public override Task<Ack> SendProcessedMessage(ProcessedMessage request, ServerCallContext context)
+    /// <summary>
+    /// دریافت پیام پردازش‌شده از Processor.
+    /// در اینجا می‌توان نتایج را لاگ یا در دیتابیس ذخیره کرد.
+    /// </summary>
+    public override Task<Ack> SendProcessedMessage(
+        ProtoProcessedMessage request,
+        ServerCallContext context)
     {
-        Console.WriteLine($"Received processed message {request.Id} from {request.Engine}");
+        Console.WriteLine($" دریافت پیام پردازش ‌شده {request.Id} از {request.Engine}");
 
-        // ذخیره در صف نتایج (در این مثال ConcurrentBag برای شبیه‌سازی)
-        _processedResults.Add(request);
-
-        // اگر بخوای می‌توانی همزمان log یا Database هم استفاده کنی
+        // اینجا رو میشه هم تو دیتابیس ذخیره کرد هم تو EventStore
         return Task.FromResult(new Ack { Success = true });
     }
 
-    public IEnumerable<ProcessedMessage> GetProcessedResults()
+    /// <summary>
+    /// متد کمکی برای Unit Test جهت بررسی نتایج پردازش.
+    /// (در حال حاضر خالی برمی‌گردد.)
+    /// </summary>
+    public IEnumerable<ProtoProcessedMessage> GetProcessedResults()
     {
-        return _processedResults.ToArray();
+        // فرض می‌کنیم اینجا نتایج را جمع می‌کنیم
+        return Enumerable.Empty<ProtoProcessedMessage>();
     }
-
-    public async Task MonitorProcessorsAsync(HealthCheckService healthService)
-    {
-        while (true)
-        {
-            var activeClients = _connectedProcessors.Values.Count(p => p.IsActive);
-            var health = await healthService.CheckHealthAsync(activeClients);
-
-            if (health == null || !health.IsEnabled)
-            {
-                // همه Processorها را غیرفعال کن
-                foreach (var p in _connectedProcessors.Values)
-                    p.IsActive = false;
-            }
-            else
-            {
-                // تعداد Processorهای فعال را با مقدار دریافتی از HealthCheck هماهنگ کن
-                var toActivate = health.NumberOfActiveClients - activeClients;
-                if (toActivate > 0)
-                {
-                    foreach (var p in _connectedProcessors.Values.Where(p => !p.IsActive).Take(toActivate))
-                        p.IsActive = true;
-                }
-
-                // غیرفعال کردن Processorهایی که بیش از 5 دقیقه پیام نخوانده‌اند
-                var timeout = DateTime.UtcNow.AddMinutes(-5);
-                foreach (var p in _connectedProcessors.Values.Where(p => p.LastRequestTime < timeout))
-                    p.IsActive = false;
-            }
-
-            await Task.Delay(30000); // هر 30 ثانیه بررسی کن
-        }
-    }
-
-
 }
+
+/// <summary>
+/// تنظیمات پیکربندی پردازشگر (مانند Regexها).
+/// </summary>
+public class ProcessorConfig
+{
+    public Dictionary<string, string> RegexSettings { get; set; } = new();
+}
+
