@@ -4,117 +4,104 @@ using Grpc.Core;
 using MPS.MessageProcessingProto.Dispatcher.Grpc;
 using MPS.MessageProcessing.Dispatcher.Models;
 
-namespace MPS.MessageProcessing.Dispatcher.GrpcServer;
-
-/// <summary>
-/// سرویس gRPC برای مدیریت ارتباط با پردازشگرها (Processors).
-/// این کلاس مسئول استقرار پردازشگرها، ارسال پیام‌ها از صف شبیه‌ساز و دریافت نتایج پردازش است.
-/// </summary>
-public class MessageProcessorService : MessageProcessor.MessageProcessorBase
+namespace MPS.MessageProcessing.Dispatcher.GrpcServer
 {
-    private readonly MessageQueueSimulator _queue;
-    private readonly ConcurrentDictionary<string, ProcessorState> _connectedProcessors = new();
-
     /// <summary>
-    /// ایجاد سرویس MessageProcessorService
+    /// سرویس gRPC برای مدیریت ارتباط با پردازشگرها (Processors).
+    /// این کلاس مسئول استقرار پردازشگرها، ارسال پیام‌ها از صف شبیه‌ساز و دریافت نتایج پردازش است.
     /// </summary>
-    /// <param name="queue">صف پیام شبیه‌سازی‌شده که قرار است پیام‌ها از آن خوانده شوند.</param>
-    public MessageProcessorService(MessageQueueSimulator queue)
+    public class MessageProcessorService : MessageProcessor.MessageProcessorBase
     {
-        _queue = queue;
-    }
+        private readonly MessageQueueSimulator _queue;
+        private readonly ConcurrentDictionary<string, ProcessorState> _connectedProcessors = new();
 
-    /// <summary>
-    /// متد اصلی برای اتصال پردازشگرها به Dispatcher.
-    /// - اضافه کردن پردازشگر به لیست پردازشگرهای متصل
-    /// - ارسال تنظیمات اولیه (Regex config)
-    /// - ارسال پیام‌ها به پردازشگر به صورت Stream
-    /// </summary>
-    public override async Task Connect(
-        IAsyncStreamReader<ProcessorInfo> requestStream,
-        IServerStreamWriter<ProtoMessageToProcess> responseStream,
-        ServerCallContext context)
-    {
-        await foreach (var processor in requestStream.ReadAllAsync())
+        // ✅ اضافه‌شده: محل ذخیره نتایج برای تست
+        private readonly ConcurrentBag<ProtoProcessedMessage> _processedResults = new();
+
+        public MessageProcessorService(MessageQueueSimulator queue)
         {
-            // ذخیره وضعیت پردازشگر متصل
-            _connectedProcessors.TryAdd(processor.Id, new ProcessorState
-            {
-                Stream = responseStream,
-                IsActive = true,
-                LastRequestTime = DateTime.UtcNow
-            });
+            _queue = queue;
+        }
 
-            Console.WriteLine($"✅ Processor متصل شد: {processor.Id} ({processor.EngineType})");
-
-            // ارسال تنظیمات Regex به پردازشگر
-            var config = new ProcessorConfig
+        public override async Task Connect(
+            IAsyncStreamReader<ProcessorInfo> requestStream,
+            IServerStreamWriter<ProtoMessageToProcess> responseStream,
+            ServerCallContext context)
+        {
+            await foreach (var processor in requestStream.ReadAllAsync())
             {
-                RegexSettings = new Dictionary<string, string>
+                _connectedProcessors.TryAdd(processor.Id, new ProcessorState
                 {
-                    { "ContainsNumber", @"\d+" },
-                    { "ContainsHello", @"\bhello\b" }
-                }
-            };
+                    Stream = responseStream,
+                    IsActive = true,
+                    LastRequestTime = DateTime.UtcNow
+                });
 
-            await responseStream.WriteAsync(new ProtoMessageToProcess
-            {
-                Id = 0,
-                Content = JsonSerializer.Serialize(config),
-                Sender = "DispatcherConfig"
-            });
+                Console.WriteLine($"✅ Processor متصل شد: {processor.Id} ({processor.EngineType})");
 
-            // ارسال پیام‌های صف به این Processor
-            _ = Task.Run(async () =>
-            {
-                while (!context.CancellationToken.IsCancellationRequested)
+                var config = new ProcessorConfig
                 {
-                    var message = await _queue.GetNextMessageAsync();
-
-                    var msgToSend = new ProtoMessageToProcess
+                    RegexSettings = new Dictionary<string, string>
                     {
-                        Id = message.Id,
-                        Sender = message.Sender,
-                        Content = message.Content
-                    };
+                        { "ContainsNumber", @"\d+" },
+                        { "ContainsHello", @"\bhello\b" }
+                    }
+                };
 
-                    await responseStream.WriteAsync(msgToSend);
-                    await Task.Delay(200); // جلوگیری از overload
-                }
-            });
+                await responseStream.WriteAsync(new ProtoMessageToProcess
+                {
+                    Id = 0,
+                    Content = JsonSerializer.Serialize(config),
+                    Sender = "DispatcherConfig"
+                });
+
+                _ = Task.Run(async () =>
+                {
+                    while (!context.CancellationToken.IsCancellationRequested)
+                    {
+                        var message = await _queue.GetNextMessageAsync();
+
+                        var msgToSend = new ProtoMessageToProcess
+                        {
+                            Id = message.Id,
+                            Sender = message.Sender,
+                            Content = message.Content
+                        };
+
+                        await responseStream.WriteAsync(msgToSend);
+                        await Task.Delay(200);
+                    }
+                });
+            }
+        }
+
+        public override Task<Ack> SendProcessedMessage(
+            ProtoProcessedMessage request,
+            ServerCallContext context)
+        {
+            Console.WriteLine($"📩 دریافت پیام پردازش ‌شده {request.Id} از {request.Engine}");
+
+            // ✅ اضافه‌شده برای تست
+            _processedResults.Add(request);
+
+            // اینجا میشه هم تو دیتابیس ذخیره کرد هم تو EventStore
+            return Task.FromResult(new Ack { Success = true });
+        }
+
+        /// <summary>
+        /// متد کمکی برای Unit Test جهت بررسی نتایج پردازش.
+        /// </summary>
+        public IEnumerable<ProtoProcessedMessage> GetProcessedResults()
+        {
+            // ✅ الان واقعاً داده داره
+            return _processedResults.ToArray();
         }
     }
 
-    /// <summary>
-    /// دریافت پیام پردازش‌شده از Processor.
-    /// در اینجا می‌توان نتایج را لاگ یا در دیتابیس ذخیره کرد.
-    /// </summary>
-    public override Task<Ack> SendProcessedMessage(
-        ProtoProcessedMessage request,
-        ServerCallContext context)
+    public class ProcessorConfig
     {
-        Console.WriteLine($" دریافت پیام پردازش ‌شده {request.Id} از {request.Engine}");
-
-        // اینجا رو میشه هم تو دیتابیس ذخیره کرد هم تو EventStore
-        return Task.FromResult(new Ack { Success = true });
-    }
-
-    /// <summary>
-    /// متد کمکی برای Unit Test جهت بررسی نتایج پردازش.
-    /// (در حال حاضر خالی برمی‌گردد.)
-    /// </summary>
-    public IEnumerable<ProtoProcessedMessage> GetProcessedResults()
-    {
-        // فرض می‌کنیم اینجا نتایج را جمع می‌کنیم
-        return Enumerable.Empty<ProtoProcessedMessage>();
+        public Dictionary<string, string> RegexSettings { get; set; } = new();
     }
 }
 
-/// <summary>
-/// تنظیمات پیکربندی پردازشگر (مانند Regexها).
-/// </summary>
-public class ProcessorConfig
-{
-    public Dictionary<string, string> RegexSettings { get; set; } = new();
-}
 

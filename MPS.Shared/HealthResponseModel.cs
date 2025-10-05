@@ -1,4 +1,6 @@
 ﻿
+using System;
+
 namespace MPS.Shared
 {
     public class HealthResponseModel
