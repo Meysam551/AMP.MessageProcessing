@@ -77,7 +77,7 @@ public class ProcessorClient
     /// متد اصلی اجرا که به Dispatcher وصل می‌شود، معرفی می‌کند،
     /// پیام‌ها را دریافت می‌کند و با استفاده از HandleMessage نتایج را ارسال می‌کند.
     /// </summary>
-    public async Task RunAsync()
+    public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         using var channel = GrpcChannel.ForAddress(_dispatcherUrl);
         var client = new MessageProcessor.MessageProcessorClient(channel);

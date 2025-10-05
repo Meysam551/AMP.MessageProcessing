@@ -1,63 +1,53 @@
-﻿
-using Grpc.Core;
+﻿using Grpc.Core;
 using MPS.MessageProcessing.Dispatcher;
 using MPS.MessageProcessing.Dispatcher.GrpcServer;
-using MPS.MessageProcessing.Dispatcher.Models;
 using MPS.MessageProcessing.Processor;
 using MPS.MessageProcessingProto.Dispatcher.Grpc;
-using DispatcherGrpcProto = MPS.MessageProcessing.Dispatcher.GrpcServer;
-using DispatcherProto = MPS.MessageProcessing.Dispatcher;
-using ProcessorProto = MPS.MessageProcessing.Processor;
 
 namespace MessageProcessing.Tests
 {
-    /// <summary>
-    /// مجموعه تست‌ها برای بررسی عملکرد Dispatcher و Processor
-    /// </summary>
     public class DispatcherProcessorTests
     {
         [Fact]
         public async Task Processor_Should_ProcessMessages_And_SendResultsToDispatcher()
         {
-            // شبیه‌سازی Queue
+            // Arrange
             var queue = new MessageQueueSimulator();
-
-            // ایجاد Dispatcher Service
             var dispatcher = new MessageProcessorService(queue);
 
-            // اجرای gRPC Server در پورت تصادفی
             const int Port = 5002;
             var server = new Server
             {
                 Services = { MessageProcessor.BindService(dispatcher) },
                 Ports = { new ServerPort("localhost", Port, ServerCredentials.Insecure) }
             };
+
             server.Start();
+            var dispatcherAddress = $"http://localhost:{Port}";
+            var processor = new ProcessorClient("RegexEngineTest", dispatcherAddress);
 
-            try
+            // Cancellation برای کنترل خروج از حلقه
+            using var cts = new CancellationTokenSource();
+
+            // Act
+            var processorTask = processor.RunAsync(cts.Token);
+            await Task.Delay(3000);
+
+            // Assert
+            var results = dispatcher.GetProcessedResults().ToList();
+            Assert.NotEmpty(results);
+
+            Assert.All(results, m =>
             {
-                var processor = new ProcessorClient("RegexEngineTest", $"http://localhost:{Port}");
+                Assert.True(m.MessageLength > 0);
+                Assert.Equal("RegexEngineTest", m.Engine);
+            });
 
-                var processorTask = processor.RunAsync();
+            // Cleanup: توقف ایمن
+            cts.Cancel();
+            await Task.WhenAny(processorTask, Task.Delay(1000)); 
 
-                await Task.Delay(2000);
-
-                // بررسی پیام‌های پردازش شده
-                var results = dispatcher.GetProcessedResults().ToList();
-                Assert.NotEmpty(results);
-                Assert.All(results, m =>
-                {
-                    Assert.True(m.MessageLength > 0);
-                    Assert.Equal("RegexEngineTest", m.Engine);
-                });
-
-                // متوقف کردن Processor
-                processorTask.Dispose();
-            }
-            finally
-            {
-                await server.ShutdownAsync();
-            }
+            await server.ShutdownAsync();
         }
     }
 }

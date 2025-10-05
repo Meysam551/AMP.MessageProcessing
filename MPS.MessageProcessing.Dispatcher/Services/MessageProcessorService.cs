@@ -37,7 +37,7 @@ namespace MPS.MessageProcessing.Dispatcher.GrpcServer
                     LastRequestTime = DateTime.UtcNow
                 });
 
-                Console.WriteLine($"✅ Processor متصل شد: {processor.Id} ({processor.EngineType})");
+                Console.WriteLine($" Processor Connected: {processor.Id} ({processor.EngineType})");
 
                 var config = new ProcessorConfig
                 {
@@ -79,7 +79,7 @@ namespace MPS.MessageProcessing.Dispatcher.GrpcServer
             ProtoProcessedMessage request,
             ServerCallContext context)
         {
-            Console.WriteLine($"📩 دریافت پیام پردازش ‌شده {request.Id} از {request.Engine}");
+            Console.WriteLine($"Receive processed message {request.Id} from {request.Engine}");
 
             // ✅ اضافه‌شده برای تست
             _processedResults.Add(request);

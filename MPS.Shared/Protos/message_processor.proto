@@ -4,10 +4,10 @@ option csharp_namespace = "MPS.MessageProcessingProto.Dispatcher.Grpc";
 
 service MessageProcessor {
     // BiDirectional Streaming
-    //Connect جریان دوطرفه است: Processor خودش را معرفی می‌کند و پیام دریافت می‌کند
+    // Connect جریان دوطرفه است: Processor خودش را معرفی می‌کند و پیام دریافت می‌کند
     rpc Connect(stream ProcessorInfo) returns (stream ProtoMessageToProcess);
 
-    //SendProcessedMessage برای ارسال نتیجه پردازش به Dispatcher است
+    // SendProcessedMessage برای ارسال نتیجه پردازش به Dispatcher است
     rpc SendProcessedMessage(ProtoProcessedMessage) returns (Ack);
 }
 
@@ -22,7 +22,7 @@ message ProtoMessageToProcess {
     int32 Id = 1;
     string Sender = 2;
     string Content = 3;
-    map<string,string> RegexSettings = 4;
+    map<string,string> RegexSettings = 4; // تنظیمات regex ارسالی از Dispatcher
 }
 
 // پیام پردازش شده
@@ -31,8 +31,10 @@ message ProtoProcessedMessage {
     string engine = 2;
     int32 messageLength = 3;
     bool isValid = 4;
-}
 
+    // ✅ اضافه شد: نتیجه اجرای regexها
+    map<string, bool> regexResults = 5;
+}
 
 // پیام تایید
 message Ack {
