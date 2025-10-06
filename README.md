@@ -182,4 +182,4 @@ AMP.MessageProcessing/
 
 ## 📄 License
 
-MIT License © 2025 — Nikola
+MIT License © 2025 — Meysam Agha Ahmadi
