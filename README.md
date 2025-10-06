@@ -1,4 +1,4 @@
-# 🧠 Message Processing System — .NET 9 | gRPC | DDD | Clean Architecture
+# 🧠 Message Processing System — .NET 9 | gRPC | Clean Architecture
 
 > A modular distributed system that processes streaming messages via gRPC, following DDD and Clean Architecture principles.
 
