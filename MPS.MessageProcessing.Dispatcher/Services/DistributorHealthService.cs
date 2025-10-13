@@ -11,6 +11,13 @@ namespace MPS.MessageProcessing.Dispatcher.Services;
 /// وظیفه دارد هر 30 ثانیه وضعیت Health سامانه تقسیم پیام را به سامانه مدیریت بفرستد.
 /// در صورت بروز خطا، فقط هشدار لاگ می‌کند (سرویس را قطع نمی‌کند).
 /// </summary>
+using System.Net.NetworkInformation;
+using System.Net.Http.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using MPS.Shared;
+
 public class DistributorHealthService : BackgroundService
 {
     private readonly HttpClient _http;
@@ -21,13 +28,14 @@ public class DistributorHealthService : BackgroundService
     public DistributorHealthService(
         HttpClient http,
         ILogger<DistributorHealthService> logger,
-        IConfiguration config,
-        Func<int> getConnectedClients)
+        IConfiguration config)
     {
         _http = http;
         _logger = logger;
         _config = config;
-        _getConnectedClients = getConnectedClients;
+
+        // چون فعلاً تعداد کلاینت‌ها ثابت فرض می‌کنیم
+        _getConnectedClients = () => 5;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -37,8 +45,11 @@ public class DistributorHealthService : BackgroundService
 
         _logger.LogInformation("DistributorHealthService started. Target: {url}", managementUrl);
 
+        //تا زمانیکه سرویس در حالن توقف نباشه ادامه میده به چک کردن سلامت سیستم
+        // و تعداد پردازشگرهای فعال از طریق آدرس بالا
         while (!stoppingToken.IsCancellationRequested)
         {
+            // درخواست ایجاد میشود
             var request = new HealthRequestModel
             {
                 Id = GenerateSystemGuid(),
@@ -48,22 +59,23 @@ public class DistributorHealthService : BackgroundService
 
             try
             {
+                // درخواست بصورت Json ارسال میشه
                 var response = await _http.PostAsJsonAsync(managementUrl, request, stoppingToken);
 
                 if (response.IsSuccessStatusCode)
                 {
                     var health = await response.Content.ReadFromJsonAsync<HealthResponseModel>(cancellationToken: stoppingToken);
-                    _logger.LogInformation("HealthCheck OK: Enabled={enabled}, ActiveClients={count}",
+                    _logger.LogInformation(" HealthCheck OK: Enabled={enabled}, ActiveClients={count}",
                         health?.IsEnabled, health?.NumberOfActiveClients);
                 }
                 else
                 {
-                    _logger.LogWarning("HealthCheck failed: {status}", response.StatusCode);
+                    _logger.LogWarning(" HealthCheck failed: {status}", response.StatusCode);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending HealthCheck to ManagementServer");
+                _logger.LogError(ex, " Error sending HealthCheck to ManagementServer");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
